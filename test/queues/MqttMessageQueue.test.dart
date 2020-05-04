@@ -2,10 +2,10 @@
 // let async = require('async');
 // let process = require('process');
 
-// import { ConfigParams } from 'pip-services3-commons-node';
+// import { ConfigParams } from 'package:pip_services3_commons-node';
 
-// import { IMessageQueue } from 'pip-services3-messaging-node';
-// import { MessageEnvelope } from 'pip-services3-messaging-node';
+// import { IMessageQueue } from 'package:pip_services3_messaging-node';
+// import { MessageEnvelope } from 'package:pip_services3_messaging-node';
 
 // import { MessageQueueFixture } from './MessageQueueFixture';
 // import { MqttMessageQueue } from '../../src/queues/MqttMessageQueue';

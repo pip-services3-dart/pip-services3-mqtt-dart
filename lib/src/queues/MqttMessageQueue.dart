@@ -1,408 +1,397 @@
-//  @module queues 
-//  @hidden 
-// let async = require('async');
+import 'dart:async';
+import 'dart:io';
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:typed_data/typed_data.dart';
+import 'package:pip_services3_components/pip_services3_components.dart';
+import 'package:pip_services3_messaging/pip_services3_messaging.dart';
+import '../connect/MqttConnectionResolver.dart';
 
-// import { ConnectionParams } from 'pip-services3-components-node';
-// import { CredentialParams } from 'pip-services3-components-node';
+///Message queue that sends and receives messages via MQTT message broker.
+///
+///MQTT is a popular light-weight protocol to communicate IoT devices.
+///
+///### Configuration parameters ###
+///
+/// - [topic]:                        name of MQTT topic to subscribe
+/// - [qos]:                          QoS from 0 to 2. Default 0
+/// - [connection(s)]:
+///  - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery]
+///  - [host]:                        host name or IP address
+///  - [port]:                        port number
+///  - [uri]:                         resource URI or connection string with all parameters in it
+/// - [credential(s)]:
+///  - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore]
+///  - [username]:                    user name
+///  - [password]:                    user password
+///
+///### References ###
+///
+///- *:logger:*:*:1.0             (optional) [ILogger] components to pass log messages
+///- *:counters:*:*:1.0           (optional) [ICounters] components to pass collected measurements
+///- *:discovery:*:*:1.0          (optional) [IDiscovery] services to resolve connections
+///- *:credential-store:*:*:1.0   (optional) Credential stores to resolve credentials
+///
+///See [MessageQueue]
+///See [MessagingCapabilities]
+///
+///### Example ###
+///
+///    var queue = new MqttMessageQueue('myqueue');
+///    queue.configure(ConfigParams.fromTuples(
+///      'topic', 'mytopic',
+///      'connection.protocol', 'mqtt'
+///      'connection.host', 'localhost'
+///      'connection.port', 1883
+///    ));
+///
+///    queue.open('123', (err) => {
+///        ...
+///    });
+///
+///    queue.send('123', new MessageEnvelope(null, 'mymessage', 'ABC'));
+///
+///    queue.receive('123', (err, message) => {
+///        if (message != null) {
+///           ...
+///           queue.complete('123', message);
+///        }
+///    });
 
-// import { IMessageReceiver } from 'pip-services3-messaging-node';
-// import { MessageQueue } from 'pip-services3-messaging-node';
-// import { MessageEnvelope } from 'pip-services3-messaging-node';
-// import { MessagingCapabilities } from 'pip-services3-messaging-node';
+class MqttMessageQueue extends MessageQueue {
+  MqttServerClient _client;
+  var _qos = MqttQos.atMostOnce;
+  String _topic;
+  bool _subscribed = false;
+  final _optionsResolver = MqttConnectionResolver();
+  IMessageReceiver _receiver;
+  var _messages = <MessageEnvelope>[];
 
-// import { MqttConnectionResolver } from '../connect/MqttConnectionResolver';
+  ///Creates a new instance of the message queue.
+  ///
+  /// - [name]  (optional) a queue name.
+  MqttMessageQueue([String name]) : super(name) {
+    capabilities = MessagingCapabilities(
+        false, true, true, true, true, false, false, false, true);
+  }
 
-// 
-// ///Message queue that sends and receives messages via MQTT message broker.
-// /// 
-// ///MQTT is a popular light-weight protocol to communicate IoT devices.
-// ///
-// ///### Configuration parameters ###
-// ///
-// ///- topic:                         name of MQTT topic to subscribe
-// ///- connection(s):
-// ///  - discovery_key:               (optional) a key to retrieve the connection from [[https://rawgit.com/pip-services-node/pip-services3-components-node/master/doc/api/interfaces/connect.idiscovery.html IDiscovery]]
-// ///  - host:                        host name or IP address
-// ///  - port:                        port number
-// ///  - uri:                         resource URI or connection string with all parameters in it
-// ///- credential(s):
-// ///  - store_key:                   (optional) a key to retrieve the credentials from [[https://rawgit.com/pip-services-node/pip-services3-components-node/master/doc/api/interfaces/auth.icredentialstore.html ICredentialStore]]
-// ///  - username:                    user name
-// ///  - password:                    user password
-// ///
-// ///### References ###
-// ///
-// ///- <code>\*:logger:\*:\*:1.0</code>             (optional) [[https://rawgit.com/pip-services-node/pip-services3-components-node/master/doc/api/interfaces/log.ilogger.html ILogger]] components to pass log messages
-// ///- <code>\*:counters:\*:\*:1.0</code>           (optional) [[https://rawgit.com/pip-services-node/pip-services3-components-node/master/doc/api/interfaces/count.icounters.html ICounters]] components to pass collected measurements
-// ///- <code>\*:discovery:\*:\*:1.0</code>          (optional) [[https://rawgit.com/pip-services-node/pip-services3-components-node/master/doc/api/interfaces/connect.idiscovery.html IDiscovery]] services to resolve connections
-// ///- <code>\*:credential-store:\*:\*:1.0</code>   (optional) Credential stores to resolve credentials
-// ///
-// ///See [[MessageQueue]]
-// ///See [[MessagingCapabilities]]
-// ///
-// ///### Example ###
-// ///
-// ///    let queue = new MqttMessageQueue("myqueue");
-// ///    queue.configure(ConfigParams.fromTuples(
-// ///      "topic", "mytopic",
-// ///      "connection.protocol", "mqtt"
-// ///      "connection.host", "localhost"
-// ///      "connection.port", 1883
-// ///    ));
-// ///
-// ///    queue.open("123", (err) => {
-// ///        ...
-// ///    });
-// ///
-// ///    queue.send("123", new MessageEnvelope(null, "mymessage", "ABC"));
-// ///
-// ///    queue.receive("123", (err, message) => {
-// ///        if (message != null) {
-// ///           ...
-// ///           queue.complete("123", message);
-// ///        }
-// ///    });
-//  
-// export class MqttMessageQueue extends MessageQueue {
-//     private _client: any;
-//     private _topic: string;
-//     private _subscribed: boolean = false;
-//     private _optionsResolver: MqttConnectionResolver = new MqttConnectionResolver();
-//     private _receiver: IMessageReceiver;
-//     private _messages: MessageEnvelope[];
+  ///Checks if the component is opened.
+  ///
+  ///Returns true if the component has been opened and false otherwise.
+  @override
+  bool isOpen() {
+    return _client != null;
+  }
 
-//     
-//     ///Creates a new instance of the message queue.
-//     ///
-//     /// - name  (optional) a queue name.
-//      
-//     public constructor(name?: string) {
-//         super(name);
-//         this._capabilities = new MessagingCapabilities(false, true, true, true, true, false, false, false, true);
-//     }
+  ///Opens the component with given connection and credential parameters.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// - [connection]        connection parameters
+  /// - [credential]        credential parameters
+  /// Return 			          Future that receives null no errors occured.
+  /// Throws error
+  @override
+  Future openWithParams(String correlationId, ConnectionParams connection,
+      CredentialParams credential) async {
+    _topic = connection.getAsString('topic');
+    // get QoS settings
+    var qos = connection.getAsIntegerWithDefault('qos', 0);
+    switch (qos) {
+      case 0:
+        {
+          _qos = MqttQos.atMostOnce;
+          break;
+        }
+      case 1:
+        {
+          _qos = MqttQos.atLeastOnce;
+          break;
+        }
+      case 2:
+        {
+          _qos = MqttQos.exactlyOnce;
+          break;
+        }
+    }
 
-//     
-// 	///Checks if the component is opened.
-// 	///
-// 	///@returns true if the component has been opened and false otherwise.
-//      
-//     public isOpen(): boolean {
-//         return this._client != null;
-//     }
+    var options =
+        await _optionsResolver.compose(correlationId, connection, credential);
 
-//     
-//     ///Opens the component with given connection and credential parameters.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//     /// - connection        connection parameters
-//     /// - credential        credential parameters
-//     /// - callback 			callback function that receives error or null no errors occured.
-//      
-//     protected openWithParams(correlationId: string, connection: ConnectionParams, credential: CredentialParams, callback: (err: any) => void): void {
-//         this._topic = connection.getAsString('topic');
+    var client = MqttServerClient(options['uri'], '');
+    client.logging(on: false);
+    client.keepAlivePeriod = 20;
 
-//         this._optionsResolver.compose(correlationId, connection, credential, (err, options) => {
-//             if (err) {
-//                 callback(err);
-//                 return;
-//             }
+    var username = options['username'];
+    var password = options['password'];
+    try {
+      if (username != null && password != null) {
+        await client.connect(username, password);
+      } else {
+        await client.connect();
+      }
+    } catch (err) {
+      logger.error(correlationId, err, 'Can\'t open MQTT client');
+      client.disconnect();
+      rethrow;
+    }
+  }
 
-//             let mqtt = require('mqtt');
-//             let client = mqtt.connect(options.uri, options);
+  ///Closes component and frees used resources.
+  ///
+  /// - [correlationId] 	(optional) transaction id to trace execution through call chain.
+  /// Returns 			Future that receives error or null no errors occured.
+  @override
+  Future close(String correlationId) async {
+    if (_client != null) {
+      _messages = <MessageEnvelope>[];
+      _subscribed = false;
+      _receiver = null;
+      _client.unsubscribe(_topic);
+      _client.disconnect();
+      _client = null;
+      logger.trace(correlationId, 'Closed queue %s', [this]);
+    }
+  }
 
-//             client.on('connect', () => {
-//                 this._client = client;
-//                 callback(null);
-//             });
-            
-//             client.on('error', (err) => {
-//                 callback(err);
-//             });
-//         });
-//     }
+  ///Clears component state.
+  ///
+  /// - [correlationId] 	(optional) transaction id to trace execution through call chain.
+  /// Returns 			Future that receives error or null no errors occured.
+  @override
+  Future clear(String correlationId) async {
+    _messages = <MessageEnvelope>[];
+  }
 
-//     
-// 	///Closes component and frees used resources.
-// 	///
-// 	/// - correlationId 	(optional) transaction id to trace execution through call chain.
-//     /// - callback 			callback function that receives error or null no errors occured.
-//      
-//     public close(correlationId: string, callback: (err: any) => void): void {
-//         if (this._client != null) {
-//             this._messages = [];
-//             this._subscribed = false;
-//             this._receiver = null;
+  ///Reads the current number of messages in the queue to be delivered.
+  ///
+  /// Returns      Future that receives number of messages or error.
+  @override
+  Future<int> readMessageCount() async {
+    // Subscribe to get messages
+    subscribe();
+    return _messages.length;
+  }
 
-//             this._client.end();
-//             this._client = null;
-//             this._logger.trace(correlationId, "Closed queue %s", this);
-//         }
+  /// Sends a message into the queue.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// - [envelope]          a message envelop to be sent.
+  /// Returns          (optional) Future that receives error or null for success.
+  @override
+  Future send(String correlationId, MessageEnvelope envelop) async {
+    counters.incrementOne('queue.' + getName() + '.sent_messages');
+    logger.debug(envelop.correlation_id, 'Sent message %s via %s',
+        [envelop.toString(), toString()]);
+    final builder = MqttClientPayloadBuilder();
+    builder.addString(envelop.message);
+    _client.publishMessage(_topic, _qos, builder.payload);
+  }
 
-//         callback(null);
-//     }
+  ///Peeks a single incoming message from the queue without removing it.
+  ///If there are no messages available in the queue it returns null.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// Returns          Future that receives a message or error.
+  @override
+  Future<MessageEnvelope> peek(String correlationId) async {
+    // Subscribe to get messages
+    subscribe();
 
-//     
-// 	///Clears component state.
-// 	///
-// 	/// - correlationId 	(optional) transaction id to trace execution through call chain.
-//     /// - callback 			callback function that receives error or null no errors occured.
-//      
-//     public clear(correlationId: string, callback: (err?: any) => void): void {
-//         this._messages = [];
-//         callback();
-//     }
+    if (_messages.isNotEmpty) {
+      return _messages[0];
+    }
+  }
 
-//     
-//     ///Reads the current number of messages in the queue to be delivered.
-//     ///
-//     /// - callback      callback function that receives number of messages or error.
-//      
-//     public readMessageCount(callback: (err: any, count: number) => void): void {
-//         // Subscribe to get messages
-//         this.subscribe();
+  ///Peeks multiple incoming messages from the queue without removing them.
+  ///If there are no messages available in the queue it returns an empty list.
+  ///
+  ///Important: This method is not supported by MQTT.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// - me[ssageCount      a maximum number of messages to peek.
+  /// Returns          Future that receives a list with messages or error.
 
-//         let count = this._messages.length;
-//         callback(null, count);
-//     }
+  Future<List<MessageEnvelope>> peekBatch(
+      String correlationId, int messageCount) async {
+    // Subscribe to get messages
+    subscribe();
+    return _messages;
+  }
 
-//     
-//     ///Sends a message into the queue.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//     /// - envelope          a message envelop to be sent.
-//     /// - callback          (optional) callback function that receives error or null for success.
-//      
-//     public send(correlationId: string, envelop: MessageEnvelope, callback?: (err: any) => void): void {
-//         this._counters.incrementOne("queue." + this.getName() + ".sent_messages");
-//         this._logger.debug(envelop.correlation_id, "Sent message %s via %s", envelop.toString(), this.toString());
+  ///Receives an incoming message and removes it from the queue.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// - [waitTimeout]       a timeout in milliseconds to wait for a message to come.
+  /// Returns          Future that receives a message or error.
+  @override
+  Future<MessageEnvelope> receive(String correlationId, int waitTimeout) async {
+    MessageEnvelope message;
 
-//         this._client.publish(this._topic, envelop.message, callback);
-//     }
+    // Subscribe to get messages
+    subscribe();
 
-//     
-//     ///Peeks a single incoming message from the queue without removing it.
-//     ///If there are no messages available in the queue it returns null.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//     /// - callback          callback function that receives a message or error.
-//      
-//     public peek(correlationId: string, callback: (err: any, result: MessageEnvelope) => void): void {
-//         // Subscribe to get messages
-//         this.subscribe();
+    // Return message immediately if it exist
+    if (_messages.isNotEmpty) {
+      message = _messages.removeAt(0); //shift();
+      return message;
+    }
 
-//         if (this._messages.length > 0)
-//             callback(null, this._messages[0]);
-//         else callback(null, null);
-//     }
+    // Otherwise wait and return
+    var checkIntervalMs = 100;
 
-//     
-//     ///Peeks multiple incoming messages from the queue without removing them.
-//     ///If there are no messages available in the queue it returns an empty list.
-//     ///
-//     ///Important: This method is not supported by MQTT.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//     /// - messageCount      a maximum number of messages to peek.
-//     /// - callback          callback function that receives a list with messages or error.
-//      
-//     public peekBatch(correlationId: string, messageCount: number, callback: (err: any, result: MessageEnvelope[]) => void): void {
-//         // Subscribe to get messages
-//         this.subscribe();
+    for (var i = 0; i < waitTimeout;) {
+      if (_client == null) {
+        break;
+      }
+      await Future.delayed(Duration(milliseconds: checkIntervalMs));
+      i = i + checkIntervalMs;
+      if (_messages.isNotEmpty) {
+        message = _messages.removeAt(0);
+        break;
+      }
+    }
+    return message;
+  }
 
-//         callback(null, this._messages);
-//     }
+  ///Renews a lock on a message that makes it invisible from other receivers in the queue.
+  ///This method is usually used to extend the message processing time.
+  ///
+  ///Important: This method is not supported by MQTT.
+  ///
+  /// - [message]       a message to extend its lock.
+  /// - [lockTimeout]   a locking timeout in milliseconds.
+  /// Returns      (optional) Future that receives an error or null for success.
+  @override
+  Future renewLock(MessageEnvelope message, int lockTimeout) async {
+    // Not supported
+    return null;
+  }
 
-//     
-//     ///Receives an incoming message and removes it from the queue.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//     /// - waitTimeout       a timeout in milliseconds to wait for a message to come.
-//     /// - callback          callback function that receives a message or error.
-//      
-//     public receive(correlationId: string, waitTimeout: number, callback: (err: any, result: MessageEnvelope) => void): void {
-//         let err: any = null;
-//         let message: MessageEnvelope = null;
-//         let messageReceived: boolean = false;
+  ///Permanently removes a message from the queue.
+  ///This method is usually used to remove the message after successful processing.
+  ///
+  ///Important: This method is not supported by MQTT.
+  ///
+  /// - [message]   a message to remove.
+  /// Returns  (optional) Future that receives an error or null for success.
+  @override
+  Future complete(MessageEnvelope message) {
+    // Not supported
+    return null;
+  }
 
-//         // Subscribe to get messages
-//         this.subscribe();
+  ///Returnes message into the queue and makes it available for all subscribers to receive it again.
+  ///This method is usually used to return a message which could not be processed at the moment
+  ///to repeat the attempt. Messages that cause unrecoverable errors shall be removed permanently
+  ///or/and send to dead letter queue.
+  ///
+  ///Important: This method is not supported by MQTT.
+  ///
+  /// - [message]   a message to return.
+  /// Returns  (optional) Future that receives an error or null for success.
+  @override
+  Future abandon(MessageEnvelope message) {
+    // Not supported
+    return null;
+  }
 
-//         // Return message immediately if it exist
-//         if (this._messages.length > 0) {
-//             message = this._messages.shift();
-//             callback(null, message);
-//             return;
-//         }
+  ///Permanently removes a message from the queue and sends it to dead letter queue.
+  ///
+  ///Important: This method is not supported by MQTT.
+  ///
+  /// - [message]   a message to be removed.
+  /// Returns  (optional) Future that receives an error or null for success.
+  @override
+  Future moveToDeadLetter(MessageEnvelope message) {
+    // Not supported
+    return null;
+  }
 
-//         // Otherwise wait and return
-//         let checkIntervalMs = 100;
-//         let i = 0;
-//         async.whilst(
-//             () => {
-//                 return this._client && i < waitTimeout && message == null;
-//             },
-//             (whilstCallback) => {
-//                 i = i + checkIntervalMs;
+  MessageEnvelope _toMessage(String topic, message, MqttPublishMessage packet) {
+    var envelop = MessageEnvelope(null, topic, message);
+    envelop.message_id =
+        packet.payload.variableHeader.messageIdentifier.toString();
 
-//                 setTimeout(() => {
-//                     message = this._messages.shift();
-//                     whilstCallback();
-//                 }, checkIntervalMs);
-//             },
-//             (err) => {
-//                 callback(err, message);
-//             }
-//         );
-//     }
+    return envelop;
+  }
 
-//     
-//     ///Renews a lock on a message that makes it invisible from other receivers in the queue.
-//     ///This method is usually used to extend the message processing time.
-//     ///
-//     ///Important: This method is not supported by MQTT.
-//     ///
-//     /// - message       a message to extend its lock.
-//     /// - lockTimeout   a locking timeout in milliseconds.
-//     /// - callback      (optional) callback function that receives an error or null for success.
-//      
-//     public renewLock(message: MessageEnvelope, lockTimeout: number, callback?: (err: any) => void): void {
-//         // Not supported
-//         if (callback) callback(null);
-//     }
+  ///Subscribes to the topic.
 
-//     
-//     ///Permanently removes a message from the queue.
-//     ///This method is usually used to remove the message after successful processing.
-//     ///
-//     ///Important: This method is not supported by MQTT.
-//     ///
-//     /// - message   a message to remove.
-//     /// - callback  (optional) callback function that receives an error or null for success.
-//      
-//     public complete(message: MessageEnvelope, callback: (err: any) => void): void {
-//         // Not supported
-//         if (callback) callback(null);
-//     }
+  void subscribe() {
+    // Exit if already subscribed or
+    if (_subscribed && _client == null) {
+      return;
+    }
 
-//     
-//     ///Returnes message into the queue and makes it available for all subscribers to receive it again.
-//     ///This method is usually used to return a message which could not be processed at the moment
-//     ///to repeat the attempt. Messages that cause unrecoverable errors shall be removed permanently
-//     ///or/and send to dead letter queue.
-//     ///
-//     ///Important: This method is not supported by MQTT.
-//     ///
-//     /// - message   a message to return.
-//     /// - callback  (optional) callback function that receives an error or null for success.
-//      
-//     public abandon(message: MessageEnvelope, callback: (err: any) => void): void {
-//         // Not supported
-//         if (callback) callback(null);
-//     }
+    logger.trace(null, 'Started listening messages at %s', [toString()]);
 
-//     
-//     ///Permanently removes a message from the queue and sends it to dead letter queue.
-//     ///
-//     ///Important: This method is not supported by MQTT.
-//     ///
-//     /// - message   a message to be removed.
-//     /// - callback  (optional) callback function that receives an error or null for success.
-//      
-//     public moveToDeadLetter(message: MessageEnvelope, callback: (err: any) => void): void {
-//         // Not supported
-//         if (callback) callback(null);
-//     }
+    _client.updates.listen((List<MqttReceivedMessage<MqttMessage>> msg) async {
+      final MqttPublishMessage packet = msg[0].payload;
+      final message =
+          MqttPublishPayload.bytesToStringAsString(packet.payload.message);
+      final topic = msg[0].topic;
+      var envelop = _toMessage(topic, message, packet);
 
-//     private toMessage(topic: string, message: any, packet: any): MessageEnvelope {
-//         let envelop = new MessageEnvelope(null, topic, message);
-//         envelop.message_id = packet.messageId;
-//         return envelop;
-//     }
+      counters.incrementOne('queue.' + getName() + '.received_messages');
+      logger.debug(envelop.correlation_id, 'Received message %s via %s',
+          [message, toString()]);
 
-//     
-//     ///Subscribes to the topic.
-//      
-//     protected subscribe(): void {
-//         // Exit if already subscribed or 
-//         if (this._subscribed && this._client == null)
-//             return;
+      if (_receiver != null) {
+        try {
+          await _receiver.receiveMessage(envelop, this);
+        } catch (ex) {
+          logger.error(null, ex, 'Failed to receive the message');
+        }
+      } else {
+        // Keep message queue managable
+        while (_messages.length > 1000) {
+          _messages.removeAt(0); // shift();
+        }
 
-//         this._logger.trace(null, "Started listening messages at %s", this.toString());
+        // Push into the message queue
+        _messages.add(envelop);
+      }
+    });
 
-//         this._client.on('message', (topic, message, packet) => {
-//             let envelop = this.toMessage(topic, message, packet);
+    // Subscribe to the topic
+    try {
+      _client.subscribe(_topic, _qos);
+    } catch (err) {
+      logger.error(null, err, 'Failed to subscribe to topic ' + _topic);
+    }
+    _subscribed = true;
+  }
 
-//             this._counters.incrementOne("queue." + this.getName() + ".received_messages");
-//             this._logger.debug(message.correlation_id, "Received message %s via %s", message, this.toString());
+  ///Listens for incoming messages and blocks the current thread until queue is closed.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// - [receiver]          a receiver to receive incoming messages.
+  ///
+  ///See [IMessageReceiver]
+  ///See [receive]
+  @override
+  void listen(String correlationId, IMessageReceiver receiver) async {
+    _receiver = receiver;
 
-//             if (this._receiver != null) {
-//                 try {
-//                     this._receiver.receiveMessage(envelop, this, (err) => {
-//                         if (err) this._logger.error(null, err, "Failed to receive the message");
-//                     });
-//                 } catch (ex) {
-//                     this._logger.error(null, ex, "Failed to receive the message");
-//                 }
-//             } else {
-//                 // Keep message queue managable
-//                 while (this._messages.length > 1000)
-//                     this._messages.shift();
-                    
-//                 // Push into the message queue
-//                 this._messages.push(envelop);
-//             }
-//         });
+    // Pass all cached messages
+    for (; _messages.isNotEmpty && _receiver != null;) {
+      var message = _messages.removeAt(0);
+      await receiver.receiveMessage(message, this);
+    }
+    subscribe();
+  }
 
-//         // Subscribe to the topic
-//         this._client.subscribe(this._topic, (err) => {
-//             if (err) this._logger.error(null, err, "Failed to subscribe to topic " + this._topic);
-//         });
-//         this._subscribed = true;
-//     }
+  ///Ends listening for incoming messages.
+  ///When this method is call [listen] unblocks the thread and execution continues.
+  ///
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  @override
+  void endListen(String correlationId) {
+    _receiver = null;
 
-//     
-//     ///Listens for incoming messages and blocks the current thread until queue is closed.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//     /// - receiver          a receiver to receive incoming messages.
-//     ///
-//     ///See [[IMessageReceiver]]
-//     ///See [[receive]]
-//      
-//     public listen(correlationId: string, receiver: IMessageReceiver): void {
-//         this._receiver = receiver;
-
-//         // Pass all cached messages
-//         async.whilst(
-//             () => {
-//                 return this._messages.length > 0 && this._receiver != null;
-//             },
-//             (whilstCallback) => {
-//                 if (this._messages.length > 0 && this._receiver != null) {
-//                     let message = this._messages.shift();
-//                     receiver.receiveMessage(message, this, whilstCallback);
-//                 } else whilstCallback();
-//             },
-//             (err) => {
-//                 // Subscribe to get messages
-//                 this.subscribe();
-//             }
-//         );
-//     }
-
-//     
-//     ///Ends listening for incoming messages.
-//     ///When this method is call [[listen]] unblocks the thread and execution continues.
-//     ///
-//     /// - correlationId     (optional) transaction id to trace execution through call chain.
-//      
-//     public endListen(correlationId: string): void {
-//         this._receiver = null;
-
-//         if (this._subscribed) {
-//             this._client.unsubscribe(this._topic);
-//             this._subscribed = false;
-//         }
-//     }
-
-// }
+    if (_subscribed) {
+      _client.unsubscribe(_topic);
+      _subscribed = false;
+    }
+  }
+}

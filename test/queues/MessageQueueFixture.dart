@@ -1,8 +1,8 @@
 // let assert = require('chai').assert;
 // let async = require('async');
 
-// import { IMessageQueue } from 'pip-services3-messaging-node';
-// import { MessageEnvelope } from 'pip-services3-messaging-node';
+// import { IMessageQueue } from 'package:pip_services3_messaging-node';
+// import { MessageEnvelope } from 'package:pip_services3_messaging-node';
 
 // export class MessageQueueFixture {
 //     private _queue: IMessageQueue;
