@@ -1,14 +1,15 @@
-FROM node:8
+# Start with the Dart image
+FROM google/dart:2.7.2
 
-# set working directory
+# Set a working directory
 WORKDIR /app
-# copy project file
-COPY package.json .
- 
-# install ALL node_modules, including 'devDependencies'
-RUN npm install
 
-# copy all project
+# Copy the entire project
 COPY . .
- 
-CMD [ "npm", "test" ]
+
+# Install all dependencies
+RUN pub get
+RUN pub get --offline
+
+# Specify the command from running tests
+CMD pub run test

@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'package:typed_data/typed_data.dart';
 import 'package:pip_services3_components/pip_services3_components.dart';
 import 'package:pip_services3_messaging/pip_services3_messaging.dart';
 import '../connect/MqttConnectionResolver.dart';
@@ -16,14 +14,14 @@ import '../connect/MqttConnectionResolver.dart';
 /// - [topic]:                        name of MQTT topic to subscribe
 /// - [qos]:                          QoS from 0 to 2. Default 0
 /// - [connection(s)]:
-///  - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery]
-///  - [host]:                        host name or IP address
-///  - [port]:                        port number
-///  - [uri]:                         resource URI or connection string with all parameters in it
+///   - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery]
+///   - [host]:                        host name or IP address
+///   - [port]:                        port number
+///   - [uri]:                         resource URI or connection string with all parameters in it
 /// - [credential(s)]:
-///  - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore]
-///  - [username]:                    user name
-///  - [password]:                    user password
+///   - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore]
+///   - [username]:                    user name
+///   - [password]:                    user password
 ///
 ///### References ###
 ///
@@ -37,26 +35,24 @@ import '../connect/MqttConnectionResolver.dart';
 ///
 ///### Example ###
 ///
-///    var queue = new MqttMessageQueue('myqueue');
-///    queue.configure(ConfigParams.fromTuples(
+///    var queue = MqttMessageQueue('myqueue');
+///    queue.configure(ConfigParams.fromTuples([
 ///      'topic', 'mytopic',
 ///      'connection.protocol', 'mqtt'
 ///      'connection.host', 'localhost'
 ///      'connection.port', 1883
-///    ));
+///    ]));
 ///
-///    queue.open('123', (err) => {
+///    await queue.open('123');
 ///        ...
-///    });
 ///
-///    queue.send('123', new MessageEnvelope(null, 'mymessage', 'ABC'));
+///    await queue.send('123', MessageEnvelope(null, 'mymessage', 'ABC'));
 ///
-///    queue.receive('123', (err, message) => {
+///    var message await = queue.receive('123')
 ///        if (message != null) {
 ///           ...
-///           queue.complete('123', message);
+///           await queue.complete('123', message);
 ///        }
-///    });
 
 class MqttMessageQueue extends MessageQueue {
   MqttServerClient _client;
@@ -116,10 +112,15 @@ class MqttMessageQueue extends MessageQueue {
 
     var options =
         await _optionsResolver.compose(correlationId, connection, credential);
-
-    var client = MqttServerClient(options['uri'], '');
+    var host = options['host'];
+    var port = int.parse(options['port']);
+    var client = MqttServerClient.withPort(host, '', port);
     client.logging(on: false);
     client.keepAlivePeriod = 20;
+
+    /// Set auto reconnect
+    client.autoReconnect = true;
+    client.setProtocolV311();
 
     var username = options['username'];
     var password = options['password'];
@@ -134,6 +135,7 @@ class MqttMessageQueue extends MessageQueue {
       client.disconnect();
       rethrow;
     }
+    _client = client;
   }
 
   ///Closes component and frees used resources.
@@ -164,7 +166,8 @@ class MqttMessageQueue extends MessageQueue {
 
   ///Reads the current number of messages in the queue to be delivered.
   ///
-  /// Returns      Future that receives number of messages or error.
+  /// Returns      Future that receives number of messages
+  /// Throws error.
   @override
   Future<int> readMessageCount() async {
     // Subscribe to get messages
@@ -176,7 +179,7 @@ class MqttMessageQueue extends MessageQueue {
   ///
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
   /// - [envelope]          a message envelop to be sent.
-  /// Returns          (optional) Future that receives error or null for success.
+  /// Returns               Future that receives error or null for success.
   @override
   Future send(String correlationId, MessageEnvelope envelop) async {
     counters.incrementOne('queue.' + getName() + '.sent_messages');
@@ -191,7 +194,8 @@ class MqttMessageQueue extends MessageQueue {
   ///If there are no messages available in the queue it returns null.
   ///
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
-  /// Returns          Future that receives a message or error.
+  /// Returns               Future that receives a message
+  /// Throws error.
   @override
   Future<MessageEnvelope> peek(String correlationId) async {
     // Subscribe to get messages
@@ -200,6 +204,7 @@ class MqttMessageQueue extends MessageQueue {
     if (_messages.isNotEmpty) {
       return _messages[0];
     }
+    return null;
   }
 
   ///Peeks multiple incoming messages from the queue without removing them.
@@ -209,8 +214,10 @@ class MqttMessageQueue extends MessageQueue {
   ///
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
   /// - me[ssageCount      a maximum number of messages to peek.
-  /// Returns          Future that receives a list with messages or error.
+  /// Returns          Future that receives a list with messages
+  /// Throws error.
 
+  @override
   Future<List<MessageEnvelope>> peekBatch(
       String correlationId, int messageCount) async {
     // Subscribe to get messages
@@ -222,7 +229,8 @@ class MqttMessageQueue extends MessageQueue {
   ///
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
   /// - [waitTimeout]       a timeout in milliseconds to wait for a message to come.
-  /// Returns          Future that receives a message or error.
+  /// Returns          Future that receives a message
+  /// Throws error.
   @override
   Future<MessageEnvelope> receive(String correlationId, int waitTimeout) async {
     MessageEnvelope message;
@@ -232,7 +240,7 @@ class MqttMessageQueue extends MessageQueue {
 
     // Return message immediately if it exist
     if (_messages.isNotEmpty) {
-      message = _messages.removeAt(0); //shift();
+      message = _messages.removeAt(0);
       return message;
     }
 
@@ -260,7 +268,8 @@ class MqttMessageQueue extends MessageQueue {
   ///
   /// - [message]       a message to extend its lock.
   /// - [lockTimeout]   a locking timeout in milliseconds.
-  /// Returns      (optional) Future that receives an error or null for success.
+  /// Returns      (optional) Future that receives an null for success.
+  /// Throws error
   @override
   Future renewLock(MessageEnvelope message, int lockTimeout) async {
     // Not supported
@@ -273,7 +282,8 @@ class MqttMessageQueue extends MessageQueue {
   ///Important: This method is not supported by MQTT.
   ///
   /// - [message]   a message to remove.
-  /// Returns  (optional) Future that receives an error or null for success.
+  /// Returns  (optional) Future that receives an null for success.
+  /// Throws error
   @override
   Future complete(MessageEnvelope message) {
     // Not supported
@@ -288,7 +298,8 @@ class MqttMessageQueue extends MessageQueue {
   ///Important: This method is not supported by MQTT.
   ///
   /// - [message]   a message to return.
-  /// Returns  (optional) Future that receives an error or null for success.
+  /// Returns  (optional) Future that receives an null for success.
+  /// Throws error
   @override
   Future abandon(MessageEnvelope message) {
     // Not supported
@@ -300,7 +311,8 @@ class MqttMessageQueue extends MessageQueue {
   ///Important: This method is not supported by MQTT.
   ///
   /// - [message]   a message to be removed.
-  /// Returns  (optional) Future that receives an error or null for success.
+  /// Returns  (optional) Future that receives an null for success.
+  /// Throws error
   @override
   Future moveToDeadLetter(MessageEnvelope message) {
     // Not supported

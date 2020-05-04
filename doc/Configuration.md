@@ -8,6 +8,7 @@ structure.
 
 MQTT messaging service has the following configuration properties:
 - topic:                         name of MQTT topic to subscribe
+- qos:                           QoS from 0 to 2. Default 0
 - connection(s):
   - discovery_key:               (optional) a key to retrieve the connection from  IDiscovery
   - host:                        host name or IP address

@@ -20,8 +20,8 @@ import 'package:pip_services3_components/pip_services3_components.dart';
 ///
 ///### References ###
 ///
-///- *:discovery:\*:\*:1.0          (optional) [IDiscovery] services to resolve connections
-///- *:credential-store:\*:\*:1.0   (optional) Credential stores to resolve credentials
+///- *:discovery:*:*:1.0          (optional) [IDiscovery] services to resolve connections
+///- *:credential-store:*:*:1.0   (optional) Credential stores to resolve credentials
 
 class MqttConnectionResolver implements IReferenceable, IConfigurable {
   ///The connections resolver.
@@ -79,13 +79,13 @@ class MqttConnectionResolver implements IReferenceable, IConfigurable {
   ConfigParams _composeOptions(
       ConnectionParams connection, CredentialParams credential) {
     // Define additional parameters parameters
-    var options = connection.override(credential).getAsObject();
+    var options = connection.override(credential);
 
     // Compose uri
-    if (options.uri == null) {
-      options.uri = options.protocol + '://' + options.host;
-      if (options.port) {
-        options.uri += ':' + options.port;
+    if (options['uri'] == null) {
+      options['uri'] = options['protocol'] + '://' + options['host'];
+      if (options['port'] != null) {
+        options['uri'] += ':' + options['port'];
       }
     }
 
