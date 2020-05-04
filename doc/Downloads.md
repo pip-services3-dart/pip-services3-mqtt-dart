@@ -1,7 +1,7 @@
 # Pip.Services MQTT Messaging for Dart Downloads
 
-Binary releases of the Redis are available through **Pub.dev** global repository. 
-To use the Redis you can either include dependency into your **pubspec.yaml** file:
+Binary releases of the MQTT are available through **Pub.dev** global repository. 
+To use the MQTT you can either include dependency into your **pubspec.yaml** file:
 
 ```yaml
 {
