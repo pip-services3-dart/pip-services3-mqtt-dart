@@ -14,27 +14,27 @@ import '../connect/MqttConnectionResolver.dart';
 /// - [topic]:                        name of MQTT topic to subscribe
 /// - [qos]:                          QoS from 0 to 2. Default 0
 /// - [connection(s)]:
-///   - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery]
+///   - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html)
 ///   - [host]:                        host name or IP address
 ///   - [port]:                        port number
 ///   - [uri]:                         resource URI or connection string with all parameters in it
 /// - [credential(s)]:
-///   - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore]
+///   - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICredentialStore-class.html)
 ///   - [username]:                    user name
 ///   - [password]:                    user password
 ///
 ///### References ###
 ///
-///- *:logger:*:*:1.0             (optional) [ILogger] components to pass log messages
-///- *:counters:*:*:1.0           (optional) [ICounters] components to pass collected measurements
-///- *:discovery:*:*:1.0          (optional) [IDiscovery] services to resolve connections
+///- *:logger:*:*:1.0             (optional) [ILogger](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ILogger-class.html) components to pass log messages
+///- *:counters:*:*:1.0           (optional) [ICounters](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICounters-class.html) components to pass collected measurements
+///- *:discovery:*:*:1.0          (optional) [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html) services to resolve connections
 ///- *:credential-store:*:*:1.0   (optional) Credential stores to resolve credentials
 ///
-///See [MessageQueue]
-///See [MessagingCapabilities]
+///See [MessageQueue](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/MessageQueue-class.html)
+///See [MessagingCapabilities](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/MessagingCapabilities-class.html)
 ///
 ///### Example ###
-///
+///```dart
 ///    var queue = MqttMessageQueue('myqueue');
 ///    queue.configure(ConfigParams.fromTuples([
 ///      'topic', 'mytopic',
@@ -53,6 +53,7 @@ import '../connect/MqttConnectionResolver.dart';
 ///           ...
 ///           await queue.complete('123', message);
 ///        }
+/// ```
 
 class MqttMessageQueue extends MessageQueue {
   MqttServerClient _client;
@@ -379,7 +380,7 @@ class MqttMessageQueue extends MessageQueue {
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
   /// - [receiver]          a receiver to receive incoming messages.
   ///
-  ///See [IMessageReceiver]
+  ///See [IMessageReceiver](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/IMessageReceiver-class.html)
   ///See [receive]
   @override
   void listen(String correlationId, IMessageReceiver receiver) async {

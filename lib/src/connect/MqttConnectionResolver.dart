@@ -9,18 +9,18 @@ import 'package:pip_services3_components/pip_services3_components.dart';
 /// ### Configuration parameters ###
 ///
 ///- [connection(s)]:
-///  - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery]
+///  - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html)
 ///  - [host]:                        host name or IP address
 ///  - [port]:                        port number
 ///  - [uri]:                         resource URI or connection string with all parameters in it
 ///- [credential(s)]:
-///  - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore]
+///  - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICredentialStore-class.html)
 ///  - [username]:                    user name
 ///  - [password]:                    user password
 ///
 ///### References ###
 ///
-///- *:discovery:*:*:1.0          (optional) [IDiscovery] services to resolve connections
+///- *:discovery:*:*:1.0          (optional) [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html) services to resolve connections
 ///- *:credential-store:*:*:1.0   (optional) Credential stores to resolve credentials
 
 class MqttConnectionResolver implements IReferenceable, IConfigurable {
