@@ -9,12 +9,12 @@ services:
     depends_on:
       - mosquitto
     environment:
-      - MOSQUITTO_PORT=1883
-      - MOSQUITTO_HOST=mosquitto
+      - MQTT_SERVICE_PORT=1883
+      - MQTT_SERVICE_HOST=mosquitto
 
   mosquitto:
     image: toke/mosquitto
-    # container_name: mosquitto
-    # ports:
-    #   - "1883:1883"
-    #   - "9001:9001"
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+      # - "9001:9001"

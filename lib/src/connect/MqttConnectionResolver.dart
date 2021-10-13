@@ -48,7 +48,8 @@ class MqttConnectionResolver implements IReferenceable, IConfigurable {
     credentialResolver.setReferences(references);
   }
 
-  void _validateConnection(String correlationId, ConnectionParams connection) {
+  void _validateConnection(
+      String? correlationId, ConnectionParams? connection) {
     if (connection == null) {
       throw ConfigException(
           correlationId, 'NO_CONNECTION', 'MQTT connection is not set');
@@ -77,16 +78,17 @@ class MqttConnectionResolver implements IReferenceable, IConfigurable {
   }
 
   ConfigParams _composeOptions(
-      ConnectionParams connection, CredentialParams credential) {
+      ConnectionParams connection, ConfigParams credential) {
     // Define additional parameters parameters
     var options = connection.override(credential);
 
     // Compose uri
-    if (options['uri'] == null) {
-      options['uri'] = options['protocol'] + '://' + options['host'];
-      if (options['port'] != null) {
-        options['uri'] += ':' + options['port'];
-      }
+    if (options.getAsNullableString('uri') == null) {
+      var protocol = connection.getAsStringWithDefault('protocol', 'mqtt');
+      var host = connection.getHost()!;
+      var port = connection.getAsIntegerWithDefault('port', 1883);
+      var uri = protocol + '://' + host + ':' + port.toString();
+      options.setAsObject('uri', uri);
     }
 
     return options;
@@ -97,36 +99,16 @@ class MqttConnectionResolver implements IReferenceable, IConfigurable {
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
   /// Return 			        Future that receives resolved options
   /// Throws error.
-  Future<ConfigParams> resolve(String correlationId) async {
-    ConnectionParams connection;
-    CredentialParams credential;
-    var err;
+  Future<ConfigParams> resolve(String? correlationId) async {
+    var connection = await connectionResolver.resolve(correlationId);
+    // Validate connections
+    _validateConnection(correlationId, connection);
 
-    await Future.wait([
-      () async {
-        try {
-          connection = await connectionResolver.resolve(correlationId);
-          // Validate connections
-          _validateConnection(correlationId, connection);
-        } catch (ex) {
-          err = ex;
-        }
-      }(),
-      () async {
-        try {
-          credential = await credentialResolver.lookup(correlationId);
-          // Credentials are not validated right now
-        } catch (ex) {
-          err = ex;
-        }
-      }()
-    ]);
+    var credential = await credentialResolver.lookup(correlationId);
+    // Credentials are not validated right now
 
-    if (err != null) {
-      throw err;
-    }
-
-    return _composeOptions(connection, credential);
+    var options = _composeOptions(connection!, credential ?? ConfigParams());
+    return options;
   }
 
   ///Composes MQTT connection options from connection and credential parameters.
@@ -136,7 +118,7 @@ class MqttConnectionResolver implements IReferenceable, IConfigurable {
   /// - [credential]        credential parameters
   /// Returns              Future that receives resolved options.
   /// Throws error.
-  Future<ConfigParams> compose(String correlationId,
+  Future<ConfigParams> compose(String? correlationId,
       ConnectionParams connection, CredentialParams credential) async {
     // Validate connections
     _validateConnection(correlationId, connection);

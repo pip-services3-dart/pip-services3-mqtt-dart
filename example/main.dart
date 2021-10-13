@@ -6,19 +6,19 @@ import 'package:pip_services3_messaging/pip_services3_messaging.dart';
 import 'package:pip_services3_mqtt/pip_services3_mqtt.dart';
 
 class TestMessageReciver implements IMessageReceiver {
-  MessageEnvelope message;
+  MessageEnvelope? message;
 
   @override
-  Future receiveMessage(MessageEnvelope envelope, IMessageQueue queue) {
+  Future receiveMessage(MessageEnvelope envelope, IMessageQueue queue) async {
     message = envelope;
     return null;
   }
 }
 
 void main() async {
-  MqttMessageQueue queue;
-  var brokerHost = Platform.environment['MOSQUITTO_HOST'] ?? 'localhost';
-  var brokerPort = Platform.environment['MOSQUITTO_PORT'] ?? 1883;
+  late MqttMessageQueue queue;
+  var brokerHost = Platform.environment['MQTT_SERVICE_HOST'] ?? 'localhost';
+  var brokerPort = Platform.environment['MQTT_SERVICE_PORT'] ?? 1883;
   var brokerTopic = Platform.environment['MOSQUITTO_TOPIC'] ?? '/test';
   if (brokerHost == '' && brokerPort == '') {
     return;
@@ -41,7 +41,7 @@ void main() async {
   await queue.clear(null);
   // Synchronus communication
   var envelope1 = MessageEnvelope('123', brokerTopic, 'Test message');
-  MessageEnvelope envelope2;
+  MessageEnvelope? envelope2;
 
   await queue.send(null, envelope1);
   var count = await queue.readMessageCount(); // count = 1

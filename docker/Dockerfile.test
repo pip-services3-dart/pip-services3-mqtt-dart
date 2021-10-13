@@ -1,5 +1,5 @@
 # Start with the Dart image
-FROM google/dart:2.7.2
+FROM google/dart
 
 # Set a working directory
 WORKDIR /app

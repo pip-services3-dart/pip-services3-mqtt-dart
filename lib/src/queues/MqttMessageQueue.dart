@@ -1,75 +1,192 @@
 import 'dart:async';
-import 'package:mqtt_client/mqtt_client.dart';
-import 'package:mqtt_client/mqtt_server_client.dart';
+import 'dart:convert';
+import 'package:mqtt_client/mqtt_client.dart' as mqtt_client;
+import 'package:pip_services3_commons/pip_services3_commons.dart';
 import 'package:pip_services3_components/pip_services3_components.dart';
 import 'package:pip_services3_messaging/pip_services3_messaging.dart';
-import '../connect/MqttConnectionResolver.dart';
+import 'package:pip_services3_mqtt/src/connect/IMqttMessageListener.dart';
+import 'package:pip_services3_mqtt/src/connect/MqttConnection.dart';
 
-///Message queue that sends and receives messages via MQTT message broker.
+/// Message queue that sends and receives messages via MQTT message broker.
 ///
-///MQTT is a popular light-weight protocol to communicate IoT devices.
+/// MQTT is a popular light-weight protocol to communicate IoT devices.
 ///
-///### Configuration parameters ###
+/// ### Configuration parameters ###
 ///
-/// - [topic]:                        name of MQTT topic to subscribe
-/// - [qos]:                          QoS from 0 to 2. Default 0
-/// - [connection(s)]:
-///   - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html)
-///   - [host]:                        host name or IP address
-///   - [port]:                        port number
-///   - [uri]:                         resource URI or connection string with all parameters in it
-/// - [credential(s)]:
-///   - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICredentialStore-class.html)
-///   - [username]:                    user name
-///   - [password]:                    user password
+///  - [topic]:                        name of MQTT topic to subscribe
+///  - [qos]:                          QoS from 0 to 2. Default 0
+///  - [connection(s)]:
+///    - [discovery_key]:               (optional) a key to retrieve the connection from [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html)
+///    - [host]:                        host name or IP address
+///    - [port]:                        port number
+///    - [uri]:                         resource URI or connection string with all parameters in it
+///  - [credential(s)]:
+///    - [store_key]:                   (optional) a key to retrieve the credentials from [ICredentialStore](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICredentialStore-class.html)
+///    - [username]:                    user name
+///    - [password]:                    user password
+///  - [options]:
+///    - [serialize_envelope]:   (optional) true to serialize entire message as JSON, false to send only message payload (default: true)
+///    - [autosubscribe]:        (optional) true to automatically subscribe on option (default: false)
+///    - [qos]:                  (optional) quality of service level aka QOS (default: 0)
+///    - [retain]:               (optional) retention flag for published messages (default: false)
+///    - [retry_connect]:        (optional) turns on/off automated reconnect when connection is log (default: true)
+///    - [connect_timeout]:      (optional) number of milliseconds to wait for connection (default: 30000)
+///    - [reconnect_timeout]:    (optional) number of milliseconds to wait on each reconnection attempt (default: 1000)
+///    - [keepalive_timeout]:    (optional) number of milliseconds to ping broker while inactive (default: 3000)
 ///
-///### References ###
+/// ### References ###
 ///
-///- *:logger:*:*:1.0             (optional) [ILogger](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ILogger-class.html) components to pass log messages
-///- *:counters:*:*:1.0           (optional) [ICounters](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICounters-class.html) components to pass collected measurements
-///- *:discovery:*:*:1.0          (optional) [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html) services to resolve connections
-///- *:credential-store:*:*:1.0   (optional) Credential stores to resolve credentials
+/// - *:logger:*:*:1.0             (optional) [ILogger](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ILogger-class.html) components to pass log messages
+/// - *:counters:*:*:1.0           (optional) [ICounters](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/ICounters-class.html) components to pass collected measurements
+/// - *:discovery:*:*:1.0          (optional) [IDiscovery](https://pub.dev/documentation/pip_services3_components/latest/pip_services3_components/IDiscovery-class.html) services to resolve connections
+/// - *:credential-store:*:*:1.0   (optional) Credential stores to resolve credentials
+/// - *:connection:mqtt:*:1.0      (optional) Shared connection to MQTT service
 ///
-///See [MessageQueue](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/MessageQueue-class.html)
-///See [MessagingCapabilities](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/MessagingCapabilities-class.html)
+/// See [MessageQueue](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/MessageQueue-class.html)
+/// See [MessagingCapabilities](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/MessagingCapabilities-class.html)
 ///
-///### Example ###
-///```dart
-///    var queue = MqttMessageQueue('myqueue');
-///    queue.configure(ConfigParams.fromTuples([
-///      'topic', 'mytopic',
-///      'connection.protocol', 'mqtt'
-///      'connection.host', 'localhost'
-///      'connection.port', 1883
-///    ]));
+/// ### Example ###
+/// ```dart
+///     var queue = MqttMessageQueue('myqueue');
+///     queue.configure(ConfigParams.fromTuples([
+///       'topic', 'mytopic',
+///       'connection.protocol', 'mqtt'
+///       'connection.host', 'localhost'
+///       'connection.port', 1883
+///     ]));
 ///
-///    await queue.open('123');
-///        ...
+///     await queue.open('123');
+///         ...
 ///
-///    await queue.send('123', MessageEnvelope(null, 'mymessage', 'ABC'));
+///     await queue.send('123', MessageEnvelope(null, 'mymessage', 'ABC'));
 ///
-///    var message await = queue.receive('123')
-///        if (message != null) {
-///           ...
-///           await queue.complete('123', message);
-///        }
-/// ```
+///     var message await = queue.receive('123')
+///         if (message != null) {
+///            ...
+///            await queue.complete('123', message);
+///         }
+///  ```
 
-class MqttMessageQueue extends MessageQueue {
-  MqttServerClient _client;
-  var _qos = MqttQos.atMostOnce;
-  String _topic;
+class MqttMessageQueue extends MessageQueue
+    implements
+        IMqttMessageListener,
+        IReferenceable,
+        IUnreferenceable,
+        IConfigurable,
+        IOpenable,
+        ICleanable {
+  static final _defaultConfig = ConfigParams.fromTuples([
+    'topic',
+    null,
+    'options.serialize_envelope',
+    false,
+    'options.autosubscribe',
+    false,
+    'options.retry_connect',
+    true,
+    'options.connect_timeout',
+    30000,
+    'options.reconnect_timeout',
+    1000,
+    'options.keepalive_timeout',
+    60000,
+    'options.qos',
+    0,
+    'options.retain',
+    false
+  ]);
+
+  ConfigParams? _config;
+  IReferences? _references;
+  bool _opened = false;
+  bool _localConnection = false;
+
+  /// The dependency resolver.
+  var _dependencyResolver = DependencyResolver(MqttMessageQueue._defaultConfig);
+
+  /// The MQTT connection component.
+  var _logger = CompositeLogger();
+
+  /// The MQTT connection component.
+  MqttConnection? _connection;
+
+  bool _serializeEnvelope = false;
+  String? _topic;
+  var _qos = mqtt_client.MqttQos.atMostOnce;
+  bool _retain = false;
+  bool _autoSubscribe = false;
   bool _subscribed = false;
-  final _optionsResolver = MqttConnectionResolver();
-  IMessageReceiver _receiver;
   var _messages = <MessageEnvelope>[];
+  IMessageReceiver? _receiver;
 
   ///Creates a new instance of the message queue.
   ///
   /// - [name]  (optional) a queue name.
-  MqttMessageQueue([String name]) : super(name) {
-    capabilities = MessagingCapabilities(
-        false, true, true, true, true, false, false, false, true);
+  MqttMessageQueue([String? name])
+      : super(
+            name,
+            MessagingCapabilities(
+                false, true, true, true, true, false, false, false, true));
+
+  /// Configures component by passing configuration parameters.
+  ///
+  /// - [config]    configuration parameters to be set.
+  @override
+  void configure(ConfigParams config) {
+    config = config.setDefaults(MqttMessageQueue._defaultConfig);
+    _config = config;
+
+    _dependencyResolver.configure(config);
+
+    _topic = config.getAsNullableString('connection.topic') ?? _topic;
+    _autoSubscribe =
+        config.getAsBooleanWithDefault('options.autosubscribe', _autoSubscribe);
+    _serializeEnvelope = config.getAsBooleanWithDefault(
+        'options.serialize_envelope', _serializeEnvelope);
+    var qosVal = config.getAsNullableInteger('options.qos');
+    _qos = qosVal != null ? mqtt_client.MqttQos.values[qosVal] : _qos;
+
+    _retain = config.getAsBooleanWithDefault('options.retain', _retain);
+  }
+
+  /// Sets references to dependent components.
+  ///
+  /// - [references] 	references to locate the component dependencies.
+  @override
+  void setReferences(IReferences references) {
+    _references = references;
+    _logger.setReferences(references);
+
+    // Get connection
+    _dependencyResolver.setReferences(references);
+    _connection = _dependencyResolver.getOneOptional('connection');
+    // Or create a local one
+    if (_connection == null) {
+      _connection = _createConnection();
+      _localConnection = true;
+    } else {
+      _localConnection = false;
+    }
+  }
+
+  /// Unsets (clears) previously set references to dependent components.
+  @override
+  void unsetReferences() {
+    _connection = null;
+  }
+
+  MqttConnection _createConnection() {
+    var connection = MqttConnection();
+
+    if (_config != null) {
+      connection.configure(_config!);
+    }
+
+    if (_references != null) {
+      connection.setReferences(_references!);
+    }
+
+    return connection;
   }
 
   ///Checks if the component is opened.
@@ -77,7 +194,38 @@ class MqttMessageQueue extends MessageQueue {
   ///Returns true if the component has been opened and false otherwise.
   @override
   bool isOpen() {
-    return _client != null;
+    return _opened;
+  }
+
+  /// Opens the component.
+  ///
+  /// - [correlationId] 	(optional) transaction id to trace execution through call chain.
+  @override
+  Future open(String? correlationId) async {
+    if (_opened) {
+      return;
+    }
+
+    if (_connection == null) {
+      _connection = _createConnection();
+      _localConnection = true;
+    }
+
+    if (_localConnection != null && _localConnection != false) {
+      await _connection!.open(correlationId);
+    }
+
+    if (!_connection!.isOpen()) {
+      throw ConnectionException(
+          correlationId, 'CONNECT_FAILED', 'MQTT connection is not opened');
+    }
+
+    // Subscribe right away
+    if (_autoSubscribe) {
+      await subscribe(correlationId);
+    }
+
+    _opened = true;
   }
 
   ///Opens the component with given connection and credential parameters.
@@ -88,71 +236,107 @@ class MqttMessageQueue extends MessageQueue {
   /// Return 			          Future that receives null no errors occured.
   /// Throws error
   @override
-  Future openWithParams(String correlationId, ConnectionParams connection,
-      CredentialParams credential) async {
-    _topic = connection.getAsString('topic');
-    // get QoS settings
-    var qos = connection.getAsIntegerWithDefault('qos', 0);
-    switch (qos) {
-      case 0:
-        {
-          _qos = MqttQos.atMostOnce;
-          break;
-        }
-      case 1:
-        {
-          _qos = MqttQos.atLeastOnce;
-          break;
-        }
-      case 2:
-        {
-          _qos = MqttQos.exactlyOnce;
-          break;
-        }
-    }
-
-    var options =
-        await _optionsResolver.compose(correlationId, connection, credential);
-    var host = options['host'];
-    var port = int.parse(options['port']);
-    var client = MqttServerClient.withPort(host, '', port);
-    client.logging(on: false);
-    client.keepAlivePeriod = 20;
-
-    /// Set auto reconnect
-    client.autoReconnect = true;
-    client.setProtocolV311();
-
-    var username = options['username'];
-    var password = options['password'];
-    try {
-      if (username != null && password != null) {
-        await client.connect(username, password);
-      } else {
-        await client.connect();
-      }
-    } catch (err) {
-      logger.error(correlationId, err, 'Can\'t open MQTT client');
-      client.disconnect();
-      rethrow;
-    }
-    _client = client;
-  }
+  Future openWithParams(String? correlationId, ConnectionParams? connection,
+      CredentialParams? credential) async {}
 
   ///Closes component and frees used resources.
   ///
   /// - [correlationId] 	(optional) transaction id to trace execution through call chain.
   /// Returns 			Future that receives error or null no errors occured.
   @override
-  Future close(String correlationId) async {
-    if (_client != null) {
-      _messages = <MessageEnvelope>[];
-      _subscribed = false;
-      _receiver = null;
-      _client.unsubscribe(_topic);
-      _client.disconnect();
-      _client = null;
-      logger.trace(correlationId, 'Closed queue %s', [this]);
+  Future close(String? correlationId) async {
+    if (!_opened) {
+      return;
+    }
+
+    if (_connection == null) {
+      throw InvalidStateException(
+          correlationId, 'NO_CONNECTION', 'MQTT connection is missing');
+    }
+
+    if (_localConnection) {
+      await _connection!.close(correlationId);
+    }
+
+    if (_subscribed) {
+      // Unsubscribe from the topic
+      var topic = getTopic();
+      await _connection!.unsubscribe(topic, this);
+    }
+
+    _messages = [];
+    _opened = false;
+    _receiver = null;
+  }
+
+  String getTopic() {
+    return _topic != null && _topic != '' ? _topic! : getName();
+  }
+
+  Future subscribe(String? correlationId) async {
+    if (_subscribed) {
+      return;
+    }
+
+    // Subscribe right away
+    var topic = getTopic();
+
+    await _connection!.subscribe(topic, {'qos': _qos}, this);
+  }
+
+  Map<String, dynamic>? fromMessage(MessageEnvelope? message) {
+    if (message == null) return null;
+
+    var data = message.message;
+    if (_serializeEnvelope) {
+      message.sent_time = DateTime.now();
+      data = json.encode(message.toJSON());
+    }
+
+    return {'topic': getName().isNotEmpty ? getName() : _topic, 'data': data};
+  }
+
+  MessageEnvelope? _toMessage(String topic, String? data, packet) {
+    if (data == null) return null;
+
+    MessageEnvelope? message;
+    if (_serializeEnvelope) {
+      // var jsonMap = json.decode(data);
+      message = MessageEnvelope.fromJSON(data);
+    } else {
+      message = MessageEnvelope(null, topic, data);
+      message.message_id = json.decode(data)['message_id'];
+      // message.message_type = topic;
+      // message.message = data;
+    }
+
+    return message;
+  }
+
+  @override
+  void onMessage(String topic, String data, packet) {
+    // Skip if it came from a wrong topic
+    var expectedTopic = getTopic();
+    if (!expectedTopic.contains('*') && expectedTopic != topic) {
+      return;
+    }
+
+    // Deserialize message
+    var message = _toMessage(topic, data, packet);
+    if (message == null) {
+      _logger.error(null, null, 'Failed to read received message');
+      return;
+    }
+
+    counters.incrementOne('queue.' + getName() + '.received_messages');
+    _logger.debug(message.correlation_id, 'Received message %s via %s',
+        [message, getName()]);
+
+    // Send message to receiver if its set or put it into the queue
+    if (_receiver != null) {
+      sendMessageToReceiver(_receiver, message);
+    } else {
+      _messages.add(message);
     }
   }
 
@@ -161,7 +345,7 @@ class MqttMessageQueue extends MessageQueue {
   /// - [correlationId] 	(optional) transaction id to trace execution through call chain.
   /// Returns 			Future that receives error or null no errors occured.
   @override
-  Future clear(String correlationId) async {
+  Future clear(String? correlationId) async {
     _messages = <MessageEnvelope>[];
   }
 
@@ -172,23 +356,7 @@ class MqttMessageQueue extends MessageQueue {
   @override
   Future<int> readMessageCount() async {
     // Subscribe to get messages
-    subscribe();
     return _messages.length;
-  }
-
-  /// Sends a message into the queue.
-  ///
-  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
-  /// - [envelope]          a message envelop to be sent.
-  /// Returns               Future that receives error or null for success.
-  @override
-  Future send(String correlationId, MessageEnvelope envelop) async {
-    counters.incrementOne('queue.' + getName() + '.sent_messages');
-    logger.debug(envelop.correlation_id, 'Sent message %s via %s',
-        [envelop.toString(), toString()]);
-    final builder = MqttClientPayloadBuilder();
-    builder.addString(envelop.message);
-    _client.publishMessage(_topic, _qos, builder.payload);
   }
 
   ///Peeks a single incoming message from the queue without removing it.
@@ -198,14 +366,24 @@ class MqttMessageQueue extends MessageQueue {
   /// Returns               Future that receives a message
   /// Throws error.
   @override
-  Future<MessageEnvelope> peek(String correlationId) async {
-    // Subscribe to get messages
-    subscribe();
+  Future<MessageEnvelope?> peek(String? correlationId) async {
+    checkOpen(correlationId);
 
+    // Subscribe to topic if needed
+    await subscribe(correlationId);
+
+    // Peek a message from the top
+    MessageEnvelope? message;
     if (_messages.isNotEmpty) {
-      return _messages[0];
+      message = _messages[0];
     }
-    return null;
+
+    if (message != null) {
+      _logger.trace(message.correlation_id, 'Peeked message %s on %s',
+          [message, getName()]);
+    }
+
+    return message;
   }
 
   ///Peeks multiple incoming messages from the queue without removing them.
@@ -220,10 +398,19 @@ class MqttMessageQueue extends MessageQueue {
 
   @override
   Future<List<MessageEnvelope>> peekBatch(
-      String correlationId, int messageCount) async {
-    // Subscribe to get messages
-    subscribe();
-    return _messages;
+      String? correlationId, int messageCount) async {
+    checkOpen(correlationId);
+
+    // Subscribe to topic if needed
+    await subscribe(correlationId);
+
+    // Peek a batch of messages
+    var messages = _messages.getRange(0, messageCount).toList();
+
+    _logger.trace(correlationId, 'Peeked %d messages on %s',
+        [messages.length, getName()]);
+
+    return messages;
   }
 
   ///Receives an incoming message and removes it from the queue.
@@ -233,39 +420,62 @@ class MqttMessageQueue extends MessageQueue {
   /// Returns          Future that receives a message
   /// Throws error.
   @override
-  Future<MessageEnvelope> receive(String correlationId, int waitTimeout) async {
-    MessageEnvelope message;
+  Future<MessageEnvelope?> receive(
+      String? correlationId, int waitTimeout) async {
+    checkOpen(correlationId);
 
-    // Subscribe to get messages
-    subscribe();
+    // Subscribe to topic if needed
+    await subscribe(correlationId);
+
+    MessageEnvelope? message;
 
     // Return message immediately if it exist
     if (_messages.isNotEmpty) {
-      message = _messages.removeAt(0);
+      message = _messages.isNotEmpty ? _messages.removeAt(0) : null;
       return message;
     }
 
     // Otherwise wait and return
-    var checkIntervalMs = 100;
+    var checkInterval = 100;
+    var elapsedTime = 0;
+    while (true) {
+      var test = isOpen() && elapsedTime < waitTimeout && message == null;
+      if (!test) break;
 
-    for (var i = 0; i < waitTimeout;) {
-      if (_client == null) {
-        break;
-      }
-      await Future.delayed(Duration(milliseconds: checkIntervalMs));
-      i = i + checkIntervalMs;
-      if (_messages.isNotEmpty) {
-        message = _messages.removeAt(0);
-        break;
-      }
+      message = await Future<MessageEnvelope?>.delayed(
+          Duration(milliseconds: checkInterval), () async {
+        message = _messages.isNotEmpty ? _messages.removeAt(0) : null;
+        return message;
+      });
+
+      elapsedTime += checkInterval;
     }
+
     return message;
   }
 
-  ///Renews a lock on a message that makes it invisible from other receivers in the queue.
-  ///This method is usually used to extend the message processing time.
+  /// Sends a message into the queue.
   ///
-  ///Important: This method is not supported by MQTT.
+  /// - [correlationId]     (optional) transaction id to trace execution through call chain.
+  /// - [envelope]          a message envelop to be sent.
+  /// Returns               Future that receives error or null for success.
+  @override
+  Future send(String? correlationId, MessageEnvelope message) async {
+    checkOpen(correlationId);
+
+    counters.incrementOne('queue.' + getName() + '.sent_messages');
+    _logger.debug(message.correlation_id, 'Sent message %s via %s',
+        [message.toString(), toString()]);
+
+    var msg = fromMessage(message);
+    var options = {'qos': _qos, 'retain': _retain};
+    await _connection!.publish(msg!['topic'], msg['data'], options);
+  }
+
+  /// Renews a lock on a message that makes it invisible from other receivers in the queue.
+  /// This method is usually used to extend the message processing time.
+  ///
+  /// Important: This method is not supported by MQTT.
   ///
   /// - [message]       a message to extend its lock.
   /// - [lockTimeout]   a locking timeout in milliseconds.
@@ -286,23 +496,23 @@ class MqttMessageQueue extends MessageQueue {
   /// Returns  (optional) Future that receives an null for success.
   /// Throws error
   @override
-  Future complete(MessageEnvelope message) {
+  Future complete(MessageEnvelope message) async {
     // Not supported
     return null;
   }
 
-  ///Returnes message into the queue and makes it available for all subscribers to receive it again.
-  ///This method is usually used to return a message which could not be processed at the moment
-  ///to repeat the attempt. Messages that cause unrecoverable errors shall be removed permanently
-  ///or/and send to dead letter queue.
+  /// Returnes message into the queue and makes it available for all subscribers to receive it again.
+  /// This method is usually used to return a message which could not be processed at the moment
+  /// to repeat the attempt. Messages that cause unrecoverable errors shall be removed permanently
+  /// or/and send to dead letter queue.
   ///
-  ///Important: This method is not supported by MQTT.
+  /// Important: This method is not supported by MQTT.
   ///
   /// - [message]   a message to return.
   /// Returns  (optional) Future that receives an null for success.
   /// Throws error
   @override
-  Future abandon(MessageEnvelope message) {
+  Future abandon(MessageEnvelope message) async {
     // Not supported
     return null;
   }
@@ -315,64 +525,21 @@ class MqttMessageQueue extends MessageQueue {
   /// Returns  (optional) Future that receives an null for success.
   /// Throws error
   @override
-  Future moveToDeadLetter(MessageEnvelope message) {
+  Future moveToDeadLetter(MessageEnvelope message) async {
     // Not supported
     return null;
   }
 
-  MessageEnvelope _toMessage(String topic, message, MqttPublishMessage packet) {
-    var envelop = MessageEnvelope(null, topic, message);
-    envelop.message_id =
-        packet.payload.variableHeader.messageIdentifier.toString();
-
-    return envelop;
-  }
-
-  ///Subscribes to the topic.
-
-  void subscribe() {
-    // Exit if already subscribed or
-    if (_subscribed && _client == null) {
+  void sendMessageToReceiver(
+      IMessageReceiver? receiver, MessageEnvelope? message) async {
+    var correlationId = message != null ? message.correlation_id : null;
+    if (message == null || receiver == null) {
+      _logger.warn(correlationId, 'MQTT message was skipped.');
       return;
     }
 
-    logger.trace(null, 'Started listening messages at %s', [toString()]);
-
-    _client.updates.listen((List<MqttReceivedMessage<MqttMessage>> msg) async {
-      final MqttPublishMessage packet = msg[0].payload;
-      final message =
-          MqttPublishPayload.bytesToStringAsString(packet.payload.message);
-      final topic = msg[0].topic;
-      var envelop = _toMessage(topic, message, packet);
-
-      counters.incrementOne('queue.' + getName() + '.received_messages');
-      logger.debug(envelop.correlation_id, 'Received message %s via %s',
-          [message, toString()]);
-
-      if (_receiver != null) {
-        try {
-          await _receiver.receiveMessage(envelop, this);
-        } catch (ex) {
-          logger.error(null, ex, 'Failed to receive the message');
-        }
-      } else {
-        // Keep message queue managable
-        while (_messages.length > 1000) {
-          _messages.removeAt(0); // shift();
-        }
-
-        // Push into the message queue
-        _messages.add(envelop);
-      }
-    });
-
-    // Subscribe to the topic
-    try {
-      _client.subscribe(_topic, _qos);
-    } catch (err) {
-      logger.error(null, err, 'Failed to subscribe to topic ' + _topic);
-    }
-    _subscribed = true;
+    await _receiver!.receiveMessage(message, this).catchError((err) =>
+        {_logger.error(correlationId, err, 'Failed to process the message')});
   }
 
   ///Listens for incoming messages and blocks the current thread until queue is closed.
@@ -383,15 +550,26 @@ class MqttMessageQueue extends MessageQueue {
   ///See [IMessageReceiver](https://pub.dev/documentation/pip_services3_messaging/latest/pip_services3_messaging/IMessageReceiver-class.html)
   ///See [receive]
   @override
-  void listen(String correlationId, IMessageReceiver receiver) async {
-    _receiver = receiver;
+  void listen(String? correlationId, IMessageReceiver receiver) async {
+    checkOpen(correlationId);
 
-    // Pass all cached messages
-    for (; _messages.isNotEmpty && _receiver != null;) {
-      var message = _messages.removeAt(0);
-      await receiver.receiveMessage(message, this);
-    }
-    subscribe();
+    // Subscribe to topic if needed
+    await subscribe(correlationId).then((value) {
+      _logger.trace(null, 'Started listening messages at %s', [getName()]);
+
+      // Resend collected messages to receiver
+      while (isOpen() && _messages.isNotEmpty) {
+        var message = _messages.isNotEmpty ? _messages.removeAt(0) : null;
+        if (message != null) {
+          sendMessageToReceiver(receiver, message);
+        }
+      }
+
+      // Set the receiver
+      if (isOpen()) {
+        _receiver = receiver;
+      }
+    });
   }
 
   ///Ends listening for incoming messages.
@@ -399,12 +577,7 @@ class MqttMessageQueue extends MessageQueue {
   ///
   /// - [correlationId]     (optional) transaction id to trace execution through call chain.
   @override
-  void endListen(String correlationId) {
+  void endListen(String? correlationId) {
     _receiver = null;
-
-    if (_subscribed) {
-      _client.unsubscribe(_topic);
-      _subscribed = false;
-    }
   }
 }
