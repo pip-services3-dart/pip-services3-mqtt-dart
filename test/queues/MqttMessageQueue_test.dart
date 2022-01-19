@@ -24,7 +24,7 @@ void main() {
       brokerHost,
       'connection.port',
       brokerPort,
-      'connection.topic',
+      'topic',
       brokerTopic,
       'options.autosubscribe',
       true,

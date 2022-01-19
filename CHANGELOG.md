@@ -10,3 +10,7 @@
 - Update MessageQueue
 - **build** added MqttMessageQueueFactory
 - **connect** added IMqttMessageListener, MqttSubscription
+
+## 1.1.1
+
+- Fixed topic config param for MqttMessageQueue

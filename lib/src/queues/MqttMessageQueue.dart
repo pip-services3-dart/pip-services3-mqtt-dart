@@ -138,7 +138,7 @@ class MqttMessageQueue extends MessageQueue
 
     _dependencyResolver.configure(config);
 
-    _topic = config.getAsNullableString('connection.topic') ?? _topic;
+    _topic = config.getAsNullableString('topic') ?? _topic;
     _autoSubscribe =
         config.getAsBooleanWithDefault('options.autosubscribe', _autoSubscribe);
     _serializeEnvelope = config.getAsBooleanWithDefault(

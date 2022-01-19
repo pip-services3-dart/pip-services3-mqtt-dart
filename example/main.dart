@@ -31,7 +31,7 @@ void main() async {
     brokerHost,
     'connection.port',
     brokerPort,
-    'connection.topic',
+    'topic',
     brokerTopic
   ]);
   queue = MqttMessageQueue();
