@@ -1,6 +1,14 @@
 {
-    "name": "pip_services3_mqtt",
-    "registry": "github.com/pip-services3-dart",
+    "name": "pip-services3-mqtt",
+    "type": "module",
+    "language": "dart",
     "version": "1.1.1",
-    "build": "0"
+    "build": 0,
+    "registry": "pipdevs",
+    "artifacts": [
+        {
+            "name":  "<name>",
+            "type": "dart"
+        }
+    ]
 }
